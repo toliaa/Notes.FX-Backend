@@ -6,12 +6,12 @@ from .schemas import (
     RegisterSchema, LoginSchema, RefreshTokenSchema,
     TokenSchema, UserSchema, ErrorSchema
 )
+from .authentication import JWTAuth
 
 User = get_user_model()
 router = Router(tags=["Authentication"])
 
 def get_tokens_for_user(user):
-    """Генерація JWT токенів для користувача"""
     refresh = RefreshToken.for_user(user)
     return {
         'refresh': str(refresh),
@@ -19,7 +19,6 @@ def get_tokens_for_user(user):
     }
 
 def user_to_dict(user):
-    """Конвертація User в словник"""
     return {
         "id": user.id,
         "username": user.username,
@@ -32,8 +31,6 @@ def user_to_dict(user):
 
 @router.post("/register", response={201: TokenSchema, 400: ErrorSchema})
 def register(request, data: RegisterSchema):
-    """Реєстрація нового користувача"""
-    
     if data.password != data.password_confirm:
         return 400, {"detail": "Паролі не співпадають"}
     
@@ -65,8 +62,6 @@ def register(request, data: RegisterSchema):
 
 @router.post("/login", response={200: TokenSchema, 401: ErrorSchema})
 def login(request, data: LoginSchema):
-    """Вхід користувача"""
-    
     try:
         user = User.objects.get(email=data.email)
     except User.DoesNotExist:
@@ -88,19 +83,16 @@ def login(request, data: LoginSchema):
 
 @router.post("/refresh", response={200: dict, 401: ErrorSchema})
 def refresh_token(request, data: RefreshTokenSchema):
-    """Оновлення access токена"""
-    
     try:
         refresh = RefreshToken(data.refresh)
         return 200, {"access": str(refresh.access_token)}
     except Exception:
         return 401, {"detail": "Невірний refresh token"}
 
-@router.get("/me", response={200: UserSchema, 401: ErrorSchema})
+@router.get("/me", response={200: UserSchema, 401: ErrorSchema}, auth=JWTAuth())
 def get_current_user(request):
-    """Отримання поточного користувача"""
-    
-    if not request.user.is_authenticated:
-        return 401, {"detail": "Не авторизований"}
-    
-    return 200, user_to_dict(request.user)
+    """
+    Отримання поточного користувача
+    Вимагає JWT токен
+    """
+    return 200, user_to_dict(request.auth)

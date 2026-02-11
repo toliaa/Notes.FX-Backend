@@ -3,20 +3,22 @@ from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
 from ninja import NinjaAPI
-
+from apps.community.api import router as community_router
 from apps.users.api import router as users_router
+from apps.notes.api import router as notes_router
 from apps.users.authentication import JWTAuth
 
-# Створення Ninja API
 api = NinjaAPI(
     title="Notes.FX API",
     version="1.0.0",
-    description="REST API для Notes.FX",
+    description="REST API для Notes.FX - додаток для створення та керування нотатками.",
     docs_url="/docs",
 )
 
-# Роутери
 api.add_router("/auth", users_router)
+api.add_router("/notes", notes_router, auth=JWTAuth())
+api.add_router("/community", community_router) 
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
