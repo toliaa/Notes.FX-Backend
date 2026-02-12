@@ -2,6 +2,7 @@ from ninja import Schema
 from datetime import datetime
 from typing import Optional, List
 from uuid import UUID
+from pydantic import BaseModel
 
 # ==================== CATEGORY SCHEMAS ====================
 
@@ -59,9 +60,45 @@ class NoteSchema(Schema):
     is_pinned: bool
     is_archived: bool
     is_public: bool
+    is_password_protected: bool  # ✅ ДОДАНЕ ПОЛЕ ДЛЯ ПАРОЛЮ!
     created_at: datetime
     updated_at: datetime
 
 class ErrorSchema(Schema):
     """Повідомлення про помилку"""
     detail: str
+
+# ==================== 🔐 SCHEMAS ДЛЯ ПАРОЛЮ ====================
+
+class NotePasswordCheckSchema(BaseModel):
+    """Schema для перевірки паролю нотатки"""
+    password: str
+
+
+class NotePasswordResponse(BaseModel):
+    """Відповідь при перевірці паролю"""
+    access_granted: bool
+    message: str
+
+
+class NoteCreateWithPasswordSchema(BaseModel):
+    """Schema для створення нотатки з паролем"""
+    title: str
+    content: str
+    category_id: Optional[str] = None
+    tag_ids: Optional[List[str]] = None
+    is_public: bool = False
+    password: Optional[str] = None  # ✅ Новий параметр!
+
+
+class NoteUpdateWithPasswordSchema(BaseModel):
+    """Schema для оновлення нотатки (включаючи пароль)"""
+    title: Optional[str] = None
+    content: Optional[str] = None
+    category_id: Optional[str] = None
+    tag_ids: Optional[List[str]] = None
+    is_pinned: Optional[bool] = None
+    is_archived: Optional[bool] = None
+    is_public: Optional[bool] = None
+    password: Optional[str] = None  # Для встановлення нового паролю
+    old_password: Optional[str] = None  # Для видалення паролю (потрібна перевірка)

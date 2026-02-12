@@ -93,18 +93,35 @@ def list_notes(request,
     
     return notes
 
-@router.get("/notes/{note_id}", response={200: NoteSchema, 404: ErrorSchema})
+@router.get("/notes/{note_id}", response={200: NoteSchema, 404: ErrorSchema, 403: ErrorSchema})
 def get_note(request, note_id: str):
     """
     GET /api/notes/notes/{id}
     
     Отримати одну нотатку
+    Якщо нотатка захищена паролем - повертаємо лише основні дані без контенту
     """
     note = get_object_or_404(Note, id=note_id, user=request.auth)
+    
+    # Якщо нотатка захищена паролем, не показуємо контент
+    if note.is_password_protected:
+        # Повертаємо обмежені дані
+        return {
+            "id": note.id,
+            "title": note.title,
+            "content": "[Контент захищений паролем]",
+            "is_password_protected": True,
+            "is_pinned": note.is_pinned,
+            "is_archived": note.is_archived,
+            "is_public": note.is_public,
+            "created_at": note.created_at,
+            "updated_at": note.updated_at,
+        }
+    
     return note
 
 @router.post("/notes", response={201: NoteSchema, 400: ErrorSchema})
-def create_note(request, data: NoteCreateSchema):
+def create_note(request, data: NoteCreateWithPasswordSchema):
     """
     POST /api/notes/notes
     Body: {
@@ -112,7 +129,8 @@ def create_note(request, data: NoteCreateSchema):
         "content": "<p>HTML контент</p>",
         "category_id": "uuid",
         "tag_ids": ["uuid1", "uuid2"],
-        "is_public": false
+        "is_public": false,
+        "password": "my_password"  # Новий параметр (опціональний)
     }
     
     Створює нову нотатку
@@ -127,6 +145,12 @@ def create_note(request, data: NoteCreateSchema):
             is_public=data.is_public
         )
         
+        # Встановлюємо пароль, якщо надано
+        if data.password:
+            note.set_password(data.password)
+        
+        note.save()
+        
         # Додавання тегів (ManyToMany)
         if data.tag_ids:
             tags = Tag.objects.filter(id__in=data.tag_ids, user=request.auth)
@@ -136,13 +160,15 @@ def create_note(request, data: NoteCreateSchema):
     except Exception as e:
         return 400, {"detail": str(e)}
 
-@router.put("/notes/{note_id}", response={200: NoteSchema, 404: ErrorSchema, 400: ErrorSchema})
-def update_note(request, note_id: str, data: NoteUpdateSchema):
+@router.put("/notes/{note_id}", response={200: NoteSchema, 404: ErrorSchema, 400: ErrorSchema, 401: ErrorSchema})
+def update_note(request, note_id: str, data: NoteUpdateWithPasswordSchema):
     """
     PUT /api/notes/notes/{id}
     Body: {
         "title": "Новий заголовок",
-        "content": "Новий контент"
+        "content": "Новий контент",
+        "password": "new_password",  # Встановити новий пароль
+        "old_password": "old_password"  # Видалити пароль (потрібна перевірка)
     }
     
     Оновлює нотатку (тільки надіслані поля)
@@ -150,7 +176,24 @@ def update_note(request, note_id: str, data: NoteUpdateSchema):
     note = get_object_or_404(Note, id=note_id, user=request.auth)
     
     try:
-        # Оновлюємо тільки надіслані поля
+        # ========== ОБРОБКА ПАРОЛЮ ==========
+        
+        # Якщо користувач хоче видалити пароль - потрібна перевірка старого паролю
+        if data.old_password is not None:
+            if not note.is_password_protected:
+                return 400, {"detail": "Нотатка не захищена паролем"}
+            
+            if not note.check_password(data.old_password):
+                return 401, {"detail": "Старий пароль невірний"}
+            
+            note.clear_password()
+        
+        # Встановлення нового паролю
+        if data.password is not None:
+            note.set_password(data.password)
+        
+        # ========== ОБРОБКА ІНШИХ ПОЛІВ ==========
+        
         if data.title is not None:
             note.title = data.title
         if data.content is not None:
@@ -201,3 +244,84 @@ def archive_note(request, note_id: str):
     note.is_archived = not note.is_archived
     note.save()
     return note
+
+# ==================== ПАРОЛЮВАННЯ API ====================
+
+@router.post("/notes/{note_id}/check-password", response={200: NotePasswordResponse, 404: ErrorSchema, 401: ErrorSchema})
+def check_note_password(request, note_id: str, data: NotePasswordCheckSchema):
+    """
+    POST /api/notes/notes/{id}/check-password
+    Body: { "password": "my_password" }
+    
+    Перевірити пароль нотатки
+    Повертає:
+    - 200 OK: Пароль правильний + повні дані нотатки
+    - 401: Пароль невірний
+    - 404: Нотатка не знайдена
+    """
+    note = get_object_or_404(Note, id=note_id, user=request.auth)
+    
+    # Якщо нотатка не захищена паролем
+    if not note.is_password_protected:
+        return 200, {
+            "access_granted": True,
+            "message": "Нотатка не захищена паролем"
+        }
+    
+    # Перевірка паролю
+    if note.check_password(data.password):
+        return 200, {
+            "access_granted": True,
+            "message": "Пароль правильний"
+        }
+    else:
+        return 401, {
+            "detail": "Пароль невірний"
+        }
+
+@router.post("/notes/{note_id}/set-password", response={200: NotePasswordResponse, 404: ErrorSchema, 400: ErrorSchema})
+def set_note_password(request, note_id: str, data: NotePasswordCheckSchema):
+    """
+    POST /api/notes/notes/{id}/set-password
+    Body: { "password": "new_password" }
+    
+    Встановити пароль на нотатку
+    """
+    note = get_object_or_404(Note, id=note_id, user=request.auth)
+    
+    if not data.password or len(data.password.strip()) < 4:
+        return 400, {"detail": "Пароль повинен мати мінімум 4 символи"}
+    
+    note.set_password(data.password)
+    note.save()
+    
+    return 200, {
+        "access_granted": True,
+        "message": "Пароль успішно встановлено"
+    }
+
+@router.post("/notes/{note_id}/remove-password", response={200: NotePasswordResponse, 404: ErrorSchema, 401: ErrorSchema})
+def remove_note_password(request, note_id: str, data: NotePasswordCheckSchema):
+    """
+    POST /api/notes/notes/{id}/remove-password
+    Body: { "password": "current_password" }
+    
+    Видалити пароль з нотатки (потрібна перевірка поточного паролю)
+    """
+    note = get_object_or_404(Note, id=note_id, user=request.auth)
+    
+    # Якщо нотатка не захищена паролем
+    if not note.is_password_protected:
+        return 400, {"detail": "Нотатка не захищена паролем"}
+    
+    # Перевірка паролю
+    if not note.check_password(data.password):
+        return 401, {"detail": "Пароль невірний"}
+    
+    note.clear_password()
+    note.save()
+    
+    return 200, {
+        "access_granted": True,
+        "message": "Пароль успішно видалено"
+    }

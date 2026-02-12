@@ -11,36 +11,36 @@ class Category(models.Model):
         primary_key=True, 
         default=uuid.uuid4, 
         editable=False
-    )
+    )  # Унікальний ID (не можна змінити)
     
     name = models.CharField(
         max_length=100, 
         verbose_name="Назва"
-    )
+    )  # Назва категорії (max 100 символів)
     
     color = models.CharField(
         max_length=7, 
         default="#6366f1", 
         verbose_name="Колір"
-    )
+    )  # Колір у форматі HEX (#ff0000)
     
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
         on_delete=models.CASCADE, 
         related_name='categories'
-    )
+    )  # Зв'язок з користувачем (якщо user видалений → категорія теж)
     
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True)  # Дата створення (автоматично)
     
     class Meta:
-        db_table = 'categories'
+        db_table = 'categories'  # Назва таблиці в БД
         verbose_name = 'Категорія'
         verbose_name_plural = 'Категорії'
-        ordering = ['name']
-        unique_together = ['user', 'name']
+        ordering = ['name']  # Сортування за назвою
+        unique_together = ['user', 'name']  # Унікальна комбінація (не може бути 2 "Робота" у одного user)
     
     def __str__(self):
-        return self.name
+        return self.name  # Відображення в Django Admin
 
 
 # ==================== ТЕГ ====================
@@ -67,159 +67,98 @@ class Tag(models.Model):
 class Note(models.Model):
     """Головна модель - нотатка з контентом"""
     
-    id = models.UUIDField(
-        primary_key=True, 
-        default=uuid.uuid4, 
-        editable=False
-    )
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
     title = models.CharField(
         max_length=255, 
         verbose_name="Заголовок"
-    )
+    )  # Заголовок нотатки
     
     content = models.TextField(
         verbose_name="Вміст"
-    )
+    )  # Вміст нотатки (HTML з редактора)
     
     # ========== ЗВ'ЯЗКИ ==========
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
         on_delete=models.CASCADE, 
         related_name='notes'
-    )
+    )  # Власник нотатки
     
     category = models.ForeignKey(
         Category, 
-        on_delete=models.SET_NULL,
+        on_delete=models.SET_NULL,  # Якщо категорія видалена → category = NULL
         null=True, 
         blank=True, 
         related_name='notes'
-    )
+    )  # Категорія (опційна)
     
     tags = models.ManyToManyField(
         Tag, 
         blank=True, 
         related_name='notes'
-    )
+    )  # Багато тегів (ManyToMany)
     
     # ========== СТАТУСИ ==========
     is_pinned = models.BooleanField(
         default=False, 
         verbose_name="Закріплена"
-    )
+    )  # Закріплена нотатка (показується зверху)
     
     is_archived = models.BooleanField(
         default=False, 
         verbose_name="Архівована"
-    )
+    )  # В архіві (не показується в основному списку)
     
     is_public = models.BooleanField(
         default=False, 
         verbose_name="Публічна"
-    )
+    )  # Публічна (може бачити будь-хто)
     
-    # ========== НОВЫЕ ПОЛЯ ДЛЯ ПАРОЛЮ ==========
+    # ========== ПАРОЛЮВАННЯ ==========
     is_password_protected = models.BooleanField(
         default=False,
         verbose_name="Захищена паролем"
-    )
+    )  # Чи є пароль на нотатку
     
-    password_hash = models.CharField(
+    password = models.CharField(
         max_length=255,
+        null=True,
         blank=True,
-        default="",
-        null=False,
-        verbose_name="Хеш паролю"
-    )
+        verbose_name="Гешований пароль"
+    )  # Гешований пароль (не зберігаємо в чистому вигляді)
     
     # ========== ДАТИ ==========
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)  # Дата створення
+    updated_at = models.DateTimeField(auto_now=True)  # Дата останнього редагування
     
     class Meta:
         db_table = 'notes'
         verbose_name = 'Нотатка'
         verbose_name_plural = 'Нотатки'
-        ordering = ['-is_pinned', '-updated_at']
-        indexes = [
-            models.Index(fields=['user', '-updated_at']),
-            models.Index(fields=['is_password_protected']),
-        ]
+        ordering = ['-is_pinned', '-updated_at']  # Сортування: спочатку pinned, потім по даті
     
     def __str__(self):
         return self.title
     
-    # ========== МЕТОДИ ДЛЯ РОБОТИ З ПАРОЛЕМ ==========
+    # ========== МЕТОДИ ДЛЯ ПАРОЛЮ ==========
     
-    def set_password(self, password: str) -> bool:
-        """Встановити пароль для нотатки"""
-        if not password or len(password) < 4:
-            return False
-        
-        try:
-            self.password_hash = make_password(password)
+    def set_password(self, raw_password: str):
+        """Встановити пароль (гешує його)"""
+        if raw_password:
+            self.password = make_password(raw_password)
             self.is_password_protected = True
-            return True
-        except Exception as e:
-            print(f"Помилка при встановленні паролю: {e}")
-            return False
-    
-    def check_password(self, password: str) -> bool:
-        """Перевірити чи правильний пароль"""
-        if not self.is_password_protected:
-            return True
-        
-        if not self.password_hash or self.password_hash == "":
-            return False
-        
-        try:
-            return check_password(password, self.password_hash)
-        except Exception as e:
-            print(f"Помилка при перевірці паролю: {e}")
-            return False
-    
-    def remove_password(self) -> bool:
-        """Видалити пароль з нотатки"""
-        try:
-            self.password_hash = ""
+        else:
+            self.password = None
             self.is_password_protected = False
-            return True
-        except Exception as e:
-            print(f"Помилка при видаленні паролю: {e}")
+    
+    def check_password(self, raw_password: str) -> bool:
+        """Перевірити пароль"""
+        if not self.password:
             return False
+        return check_password(raw_password, self.password)
     
-    def has_password(self) -> bool:
-        """Перевірити чи нотатка захищена паролем"""
-        return self.is_password_protected and bool(self.password_hash and self.password_hash != "")
-    
-    def get_display_title(self) -> str:
-        """Отримати заголовок для відображення з іконками"""
-        title = self.title
-        
-        if self.is_password_protected:
-            title = f"🔒 {title}"
-        elif self.is_public:
-            title = f"🌐 {title}"
-        
-        return title
-    
-    def can_view(self, user=None, password: str = "") -> bool:
-        """Перевірити чи користувач має доступ до нотатки"""
-        # Власник завжди має доступ
-        if user and self.user == user:
-            return True
-        
-        # Приватна - тільки власник
-        if not self.is_public:
-            return False
-        
-        # Публічна без паролю
-        if self.is_public and not self.is_password_protected:
-            return True
-        
-        # Захищена паролем
-        if self.is_password_protected:
-            return bool(password) and self.check_password(password)
-        
-        return False
+    def clear_password(self):
+        """Видалити пароль"""
+        self.password = None
+        self.is_password_protected = False

@@ -15,7 +15,7 @@ class TagAdmin(admin.ModelAdmin):
 
 @admin.register(Note)
 class NoteAdmin(admin.ModelAdmin):
-    list_display = ['title', 'user', 'category', 'is_pinned', 'is_archived', 'is_public', 'created_at']
+    list_display = ['title', 'user', 'category', 'is_pinned', 'is_archived', 'is_public', 'created_at',]
     list_filter = ['is_pinned', 'is_archived', 'is_public', 'category', 'created_at']
     search_fields = ['title', 'content']
     filter_horizontal = ['tags']
