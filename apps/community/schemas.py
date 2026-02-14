@@ -49,6 +49,16 @@ class PublicNoteSchema(Schema):
     
     # Ланцюг ідей
     inspired_by: Optional[dict] = None  # Джерело натхнення
+    is_password_protected: bool = False
+
+
+class NotePasswordCheckSchema(Schema):
+    password: str
+
+
+class NotePasswordResponse(Schema):
+    access_granted: bool
+    message: str
 
 # ==================== IDEA CHAIN SCHEMAS ====================
 class InspireSchema(Schema):
