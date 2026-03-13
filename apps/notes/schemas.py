@@ -61,12 +61,104 @@ class NoteSchema(Schema):
     is_archived: bool
     is_public: bool
     is_password_protected: bool  # ✅ ДОДАНЕ ПОЛЕ ДЛЯ ПАРОЛЮ!
+    inspired_by: Optional[dict] = None
     created_at: datetime
     updated_at: datetime
+
+
+class NoteRevisionSchema(Schema):
+    id: UUID
+    created_at: datetime
+    title: str
+    content_preview: str
+    category_id: Optional[str] = None
+    tag_ids: List[str] = []
+    is_pinned: bool
+    is_archived: bool
+    is_public: bool
+
+
+class MoodEntryCreateSchema(BaseModel):
+    date: str
+    mood: int
+    note: Optional[str] = ""
+
+
+class MoodEntrySchema(Schema):
+    id: UUID
+    date: str
+    mood: int
+    note: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReminderCreateSchema(BaseModel):
+    title: str
+    description: Optional[str] = ""
+    due_at: datetime
+    notify_email: bool = True
+
+
+class ReminderUpdateSchema(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    due_at: Optional[datetime] = None
+    is_done: Optional[bool] = None
+    notify_email: Optional[bool] = None
+
+
+class ReminderSchema(Schema):
+    id: UUID
+    title: str
+    description: str
+    due_at: datetime
+    is_done: bool
+    notify_email: bool
+    email_sent_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReminderNotificationSchema(Schema):
+    id: UUID
+    reminder_id: UUID
+    message: str
+    is_read: bool
+    created_at: datetime
+
+
+class AIAssistRequestSchema(BaseModel):
+    title: Optional[str] = ""
+    content: str
+    instruction: Optional[str] = ""
+
+
+class AIAssistResponseSchema(Schema):
+    assistant_text: str
+
+
+class AISuggestMetaRequestSchema(BaseModel):
+    title: Optional[str] = ""
+    content: str
+
+
+class AISuggestMetaResponseSchema(Schema):
+    tags: List[str]
+    themes: List[str]
+
 
 class ErrorSchema(Schema):
     """Повідомлення про помилку"""
     detail: str
+
+# ==================== FILE UPLOAD SCHEMAS ====================
+
+class UploadedFileSchema(Schema):
+    name: str
+    url: str
+    size: int
+    content_type: str
 
 # ==================== 🔐 SCHEMAS ДЛЯ ПАРОЛЮ ====================
 

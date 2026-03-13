@@ -22,6 +22,16 @@ from .schemas import (
 router = Router(tags=["Community"], auth=JWTAuth())
 
 
+def get_request_auth(request):
+    auth = getattr(request, "auth", None)
+    if auth:
+        return auth
+    user = getattr(request, "user", None)
+    if getattr(user, "is_authenticated", False):
+        return user
+    return None
+
+
 def user_to_minimal(user):
     return {
         "id": user.id,
@@ -31,7 +41,7 @@ def user_to_minimal(user):
 
 
 def note_to_public(note: Note, current_user, reveal_content: bool = False):
-    is_liked = Like.objects.filter(note=note, user=current_user).exists()
+    is_liked = bool(current_user) and Like.objects.filter(note=note, user=current_user).exists()
     is_protected = bool(getattr(note, "is_password_protected", False))
 
     inspired_by = None
@@ -46,7 +56,7 @@ def note_to_public(note: Note, current_user, reveal_content: bool = False):
     return {
         "id": note.id,
         "title": note.title,
-        "content": note.content if (not is_protected or reveal_content) else "[Контент захищений паролем]",
+        "content": note.content if (not is_protected or reveal_content) else "[Content is password protected]",
         "user": user_to_minimal(note.user),
         "category": {
             "id": note.category.id,
@@ -85,34 +95,39 @@ def public_feed(request, tag: Optional[str] = None, sort_by: str = "recent"):
     else:
         notes = notes.order_by("-created_at")
 
-    return [note_to_public(note, request.auth, reveal_content=False) for note in notes[:50]]
+    current_user = get_request_auth(request)
+    return [note_to_public(note, current_user, reveal_content=False) for note in notes[:50]]
 
 
-@router.get("/feed/{note_id}", response={200: PublicNoteSchema, 401: ErrorSchema, 404: ErrorSchema})
-@router.get("/notes/{note_id}", response={200: PublicNoteSchema, 401: ErrorSchema, 404: ErrorSchema})
+@router.get("/feed/{note_id}", auth=None, response={200: PublicNoteSchema, 401: ErrorSchema, 404: ErrorSchema})
+@router.get("/notes/{note_id}", auth=None, response={200: PublicNoteSchema, 401: ErrorSchema, 404: ErrorSchema})
 def get_public_note(request, note_id: str, password: Optional[str] = None):
     note = get_object_or_404(Note, id=note_id, is_public=True)
 
     reveal_content = False
     if getattr(note, "is_password_protected", False):
-        if not password or not note.check_password(password):
-            return 401, {"detail": "Невірний пароль або пароль не вказаний"}
-        reveal_content = True
+        # Allow shared link open without password; return masked content in that case.
+        # Return 401 only when password was provided but incorrect.
+        if password:
+            if not note.check_password(password):
+                return 401, {"detail": "Incorrect password"}
+            reveal_content = True
 
-    return 200, note_to_public(note, request.auth, reveal_content=reveal_content)
+    current_user = get_request_auth(request)
+    return 200, note_to_public(note, current_user, reveal_content=reveal_content)
 
 
-@router.post("/notes/{note_id}/check-password", response={200: NotePasswordResponse, 401: ErrorSchema, 404: ErrorSchema})
+@router.post("/notes/{note_id}/check-password", auth=None, response={200: NotePasswordResponse, 401: ErrorSchema, 404: ErrorSchema})
 def check_public_note_password(request, note_id: str, data: NotePasswordCheckSchema):
     note = get_object_or_404(Note, id=note_id, is_public=True)
 
     if not getattr(note, "is_password_protected", False):
-        return 200, {"access_granted": True, "message": "Нотатка не захищена паролем"}
+        return 200, {"access_granted": True, "message": "Note is not password protected"}
 
     if note.check_password(data.password):
-        return 200, {"access_granted": True, "message": "Пароль правильний"}
+        return 200, {"access_granted": True, "message": "Password is correct"}
 
-    return 401, {"detail": "Пароль невірний"}
+    return 401, {"detail": "Incorrect password"}
 
 
 @router.get("/notes/{note_id}/comments", response=List[CommentSchema])
@@ -184,16 +199,15 @@ def get_likes(request, note_id: str):
     ]
 
 
-@router.post("/notes/{note_id}/inspire", response={201: dict, 400: ErrorSchema, 401: ErrorSchema, 404: ErrorSchema})
-def inspire_from_note(request, note_id: str, password: Optional[str] = None):
+def _copy_note_from_community(request, note_id: str, password: Optional[str] = None):
     original_note = get_object_or_404(Note, id=note_id, is_public=True)
 
     if getattr(original_note, "is_password_protected", False):
         if not password or not original_note.check_password(password):
-            return 401, {"detail": "Невірний пароль або пароль не вказаний"}
+            return 401, {"detail": "Incorrect password or password is missing"}
 
     if original_note.user == request.auth:
-        return 400, {"detail": "Не можна копіювати власну нотатку"}
+        return 400, {"detail": "You cannot copy your own note"}
 
     new_note = Note.objects.create(
         user=request.auth,
@@ -206,7 +220,17 @@ def inspire_from_note(request, note_id: str, password: Optional[str] = None):
 
     IdeaChain.objects.create(original_note=original_note, inspired_note=new_note)
 
-    return 201, {"message": "Нотатку скопійовано!", "note_id": new_note.id}
+    return 201, {"message": "Note copied successfully", "note_id": new_note.id}
+
+
+@router.post("/notes/{note_id}/inspire", response={201: dict, 400: ErrorSchema, 401: ErrorSchema, 404: ErrorSchema})
+def inspire_from_note(request, note_id: str, password: Optional[str] = None):
+    return _copy_note_from_community(request, note_id, password)
+
+
+@router.post("/notes/{note_id}/copy", response={201: dict, 400: ErrorSchema, 401: ErrorSchema, 404: ErrorSchema})
+def copy_note_from_community(request, note_id: str, password: Optional[str] = None):
+    return _copy_note_from_community(request, note_id, password)
 
 
 @router.get("/notes/{note_id}/chain", response=List[dict])

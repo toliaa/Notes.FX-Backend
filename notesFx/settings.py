@@ -3,18 +3,21 @@ from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
 
-
-load_dotenv()
-
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Load env vars from common locations in this project.
+load_dotenv(BASE_DIR / '.env')
+load_dotenv(BASE_DIR / '.env' / '.env')
+
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-change-this-in-production-please')
+SECRET_KEY = os.getenv('SECRET_KEY')
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY is not set. Provide it via environment variables.")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG', 'True') == 'True'
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = [h for h in os.getenv('ALLOWED_HOSTS', '').split(',') if h]
 
 # Application definition
 INSTALLED_APPS = [
@@ -176,3 +179,39 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
 }
+
+# Email (Twilio SendGrid SMTP for reminder notifications)
+EMAIL_BACKEND = os.getenv(
+    'EMAIL_BACKEND',
+    'django.core.mail.backends.smtp.EmailBackend'
+)
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.sendgrid.net')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'apikey')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER or 'noreply@notesfx.local')
+
+# Local dev fallback when SMTP credentials are not configured.
+if not os.getenv('EMAIL_BACKEND') and not EMAIL_HOST_USER:
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+
+# AI provider
+AI_PROVIDER = os.getenv('AI_PROVIDER', 'gemini').lower()
+AI_MIN_INTERVAL_SECONDS = int(os.getenv('AI_MIN_INTERVAL_SECONDS', '15'))
+
+# OpenAI
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
+OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4.1-mini')
+
+# Ollama
+OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434').rstrip('/')
+OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen2.5:7b-instruct')
+
+# Gemini
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
+GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-3-flash')
+GEMINI_FALLBACK_MODELS = os.getenv(
+    'GEMINI_FALLBACK_MODELS',
+    'gemini-3-flash,gemini-2-flash-exp,gemini-2.5-flash-lite,gemini-2-flash,gemini-2.0-flash,gemini-2.5-flash'
+)

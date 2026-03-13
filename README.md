@@ -32,6 +32,7 @@ POST   /api/notes/{id}/comments     # Add comment
 #### Community
 ```
 GET    /api/community/notes/{id}/chain  # Get idea chain
+POST   /api/community/notes/{id}/inspire # Copy note via inspire action
 POST   /api/community/notes/{id}/copy   # Copy note to inspire
 ```
 

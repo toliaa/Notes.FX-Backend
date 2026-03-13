@@ -162,3 +162,80 @@ class Note(models.Model):
         """Видалити пароль"""
         self.password = None
         self.is_password_protected = False
+
+
+class NoteRevision(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name='revisions')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='note_revisions')
+    snapshot = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'note_revisions'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Revision of {self.note_id} at {self.created_at.isoformat()}"
+
+
+class MoodEntry(models.Model):
+    MOOD_CHOICES = (
+        (1, "Very bad"),
+        (2, "Bad"),
+        (3, "Neutral"),
+        (4, "Good"),
+        (5, "Great"),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="mood_entries")
+    date = models.DateField()
+    mood = models.PositiveSmallIntegerField(choices=MOOD_CHOICES)
+    note = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "mood_entries"
+        ordering = ["-date", "-updated_at"]
+        unique_together = ("user", "date")
+
+    def __str__(self):
+        return f"{self.user_id} mood {self.mood} on {self.date.isoformat()}"
+
+
+class Reminder(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="reminders")
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default="")
+    due_at = models.DateTimeField()
+    is_done = models.BooleanField(default=False)
+    notify_email = models.BooleanField(default=True)
+    email_sent_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "reminders"
+        ordering = ["is_done", "due_at"]
+
+    def __str__(self):
+        return f"Reminder {self.title} for {self.user_id} at {self.due_at.isoformat()}"
+
+
+class ReminderNotification(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="reminder_notifications")
+    reminder = models.ForeignKey(Reminder, on_delete=models.CASCADE, related_name="notifications")
+    message = models.CharField(max_length=255)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "reminder_notifications"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Notification for {self.user_id}: {self.message}"
