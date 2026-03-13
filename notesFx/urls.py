@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.contrib.admin.views.decorators import staff_member_required
 from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
@@ -13,6 +14,7 @@ api = NinjaAPI(
     version="1.0.0",
     description="REST API для Notes.FX - додаток для створення та керування нотатками.",
     docs_url="/docs",
+    docs_decorator=staff_member_required,
 )
 
 api.add_router("/auth", users_router)
