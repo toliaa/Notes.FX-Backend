@@ -117,9 +117,9 @@ SIMPLE_JWT = {
 }
 
 # CORS Settings - підключення до Next.js frontend
+default_cors = "http://localhost:3000,http://127.0.0.1:3000"
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
+    origin for origin in os.getenv('CORS_ALLOWED_ORIGINS', default_cors).split(',') if origin
 ]
 
 CORS_ALLOW_CREDENTIALS = True
