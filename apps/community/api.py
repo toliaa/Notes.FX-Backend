@@ -1,7 +1,7 @@
 from datetime import timedelta
 from typing import List, Optional
 
-from django.db.models import Count
+from django.db.models import Count, Exists, OuterRef, Prefetch
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from ninja import Router
@@ -41,11 +41,18 @@ def user_to_minimal(user):
 
 
 def note_to_public(note: Note, current_user, reveal_content: bool = False):
-    is_liked = bool(current_user) and Like.objects.filter(note=note, user=current_user).exists()
+    is_liked = bool(getattr(note, "is_liked", False))
+    if current_user and not hasattr(note, "is_liked"):
+        is_liked = Like.objects.filter(note=note, user=current_user).exists()
     is_protected = bool(getattr(note, "is_password_protected", False))
 
     inspired_by = None
-    chain = IdeaChain.objects.filter(inspired_note=note).first()
+    chain = None
+    prefetched = getattr(note, "inspiration_links", None)
+    if prefetched is not None:
+        chain = prefetched[0] if prefetched else None
+    else:
+        chain = IdeaChain.objects.filter(inspired_note=note).first()
     if chain:
         inspired_by = {
             "id": chain.original_note.id,
@@ -68,8 +75,8 @@ def note_to_public(note: Note, current_user, reveal_content: bool = False):
         "tags": [{"id": tag.id, "name": tag.name} for tag in note.tags.all()],
         "created_at": note.created_at,
         "updated_at": note.updated_at,
-        "likes_count": note.likes.count(),
-        "comments_count": note.comments.count(),
+        "likes_count": getattr(note, "likes_count", note.likes.count()),
+        "comments_count": getattr(note, "comments_count", note.comments.count()),
         "is_liked": is_liked,
         "inspired_by": inspired_by,
         "is_password_protected": is_protected,
@@ -82,9 +89,27 @@ def public_feed(request, tag: Optional[str] = None, sort_by: str = "recent"):
     if tag:
         notes = notes.filter(tags__name=tag)
 
+    current_user = get_request_auth(request)
+
     notes = notes.annotate(
         likes_count=Count("likes", distinct=True),
         comments_count=Count("comments", distinct=True),
+    )
+
+    if current_user:
+        notes = notes.annotate(
+            is_liked=Exists(
+                Like.objects.filter(note=OuterRef("pk"), user=current_user)
+            )
+        )
+
+    notes = notes.select_related("user", "category").prefetch_related(
+        "tags",
+        Prefetch(
+            "inspiration_source",
+            queryset=IdeaChain.objects.select_related("original_note__user"),
+            to_attr="inspiration_links",
+        ),
     )
 
     if sort_by == "popular":
@@ -95,7 +120,6 @@ def public_feed(request, tag: Optional[str] = None, sort_by: str = "recent"):
     else:
         notes = notes.order_by("-created_at")
 
-    current_user = get_request_auth(request)
     return [note_to_public(note, current_user, reveal_content=False) for note in notes[:50]]
 
 
