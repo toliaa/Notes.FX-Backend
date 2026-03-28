@@ -41,3 +41,38 @@ All endpoints require JWT authentication.
 ---
 
 ## Main Documentation
+
+## Deployment Profiles
+
+This repository now has separate dependency profiles for Render and Railway.
+
+### Files
+
+```txt
+requirements/base.txt
+requirements/render.txt
+requirements/railway.txt
+requirements.txt
+```
+
+`requirements.txt` defaults to the Railway profile for backward compatibility.
+
+### Render
+
+Use these commands in Render:
+
+```bash
+pip install -r requirements/render.txt
+python manage.py migrate
+gunicorn notesFx.wsgi:application --bind 0.0.0.0:$PORT
+```
+
+### Railway
+
+Use these commands in Railway:
+
+```bash
+pip install -r requirements/railway.txt
+python manage.py migrate
+gunicorn notesFx.wsgi:application --bind 0.0.0.0:$PORT
+```
