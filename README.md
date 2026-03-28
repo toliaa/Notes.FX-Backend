@@ -55,7 +55,7 @@ requirements/railway.txt
 requirements.txt
 ```
 
-`requirements.txt` defaults to the Railway profile for backward compatibility.
+`requirements.txt` is kept as a flat default dependency list for maximum compatibility with platforms that automatically run `pip install -r requirements.txt`.
 
 ### Render
 
