@@ -6,6 +6,9 @@ import ERDiagram from '@/components/diagrams/ERDiagram'
 import DataFlowDiagram from '@/components/diagrams/DataFlowDiagram'
 import AuthFlowDiagram from '@/components/diagrams/AuthFlowDiagram'
 import AIIntegrationDiagram from '@/components/diagrams/AIIntegrationDiagram'
+import UsersModuleDiagram from '@/components/diagrams/UsersModuleDiagram'
+import NotesModuleDiagram from '@/components/diagrams/NotesModuleDiagram'
+import CommunityModuleDiagram from '@/components/diagrams/CommunityModuleDiagram'
 
 export default function ArchitecturePage() {
   return (
@@ -177,6 +180,12 @@ export default function ArchitecturePage() {
             користувачів у системі. Він використовує JWT (JSON Web Tokens) для безпечної автентифікації без 
             зберігання стану сесії на сервері.
           </p>
+
+          {/* Users Module Architecture Diagram */}
+          <div className="bg-[#141414] p-6 rounded-xl border border-[#27272a] mb-6">
+            <h4 className="text-[#e2e8f0] font-semibold mb-4">Діаграма архітектури модуля Users</h4>
+            <UsersModuleDiagram />
+          </div>
           
           <div className="grid md:grid-cols-2 gap-6">
             <div className="p-5 bg-[#141414] rounded-xl border border-[#27272a]">
@@ -256,6 +265,12 @@ export default function ArchitecturePage() {
             що забезпечує повний цикл роботи з нотатками: створення, редагування, організацію через категорії 
             та теги, а також інтеграцію з AI для інтелектуальної обробки контенту.
           </p>
+
+          {/* Notes Module Architecture Diagram */}
+          <div className="bg-[#141414] p-6 rounded-xl border border-[#27272a] mb-6">
+            <h4 className="text-[#e2e8f0] font-semibold mb-4">Діаграма архітектури модуля Notes</h4>
+            <NotesModuleDiagram />
+          </div>
           
           <div className="grid lg:grid-cols-3 gap-4 mb-6">
             <div className="p-4 bg-[#141414] rounded-lg border border-[#27272a]">
@@ -342,6 +357,12 @@ export default function ArchitecturePage() {
             нотаток, дозволяючи користувачам взаємодіяти між собою через лайки, коментарі та спільні 
             ланцюги ідей (IdeaChains).
           </p>
+
+          {/* Community Module Architecture Diagram */}
+          <div className="bg-[#141414] p-6 rounded-xl border border-[#27272a] mb-6">
+            <h4 className="text-[#e2e8f0] font-semibold mb-4">Діаграма архітектури модуля Community</h4>
+            <CommunityModuleDiagram />
+          </div>
           
           <div className="grid md:grid-cols-3 gap-4 mb-6">
             <div className="p-5 bg-[#141414] rounded-xl border border-[#27272a]">
@@ -452,7 +473,7 @@ export default function ArchitecturePage() {
         <Section 
           id="auth-flow" 
           title="6. JWT Автентифікація"
-          conclusion="JWT автентифікація в Notes.FX забезпечує stateless аутентифікацію, що спрощує масштабування системи. Access токен використовується для короткострокової автентифікації API запитів, тоді як Refresh токен дозволяє оновлювати Access токен без повторного введення облікових даних. Захищені endpoints автоматично валідують JWT та отримують user_id для фільтрації даних."
+          conclusion="JWT автентифікація в Notes.FX забезпечує stateless аутентифікацію, що спрощує масштабування системи. Access токен використовується для короткострокової автентифікації API запитів, тоді як Refresh токен дозволяє оновлювати Access токен без повторного введення о��лікових даних. Захищені endpoints автоматично валідують JWT та отримують user_id для фільтрації даних."
         >
           <p className="text-[#a1a1aa] mb-6 leading-relaxed">
             Система використовує JWT (JSON Web Tokens) для автентифікації. Діаграма демонструє повний 
@@ -671,7 +692,7 @@ export default function ArchitecturePage() {
         <Section 
           id="technologies" 
           title="9. Технологічний стек"
-          conclusion="Технологічний стек Notes.FX Backend обрано з урахуванням сучасних практик розробки веб-додатків. Django забезпечує надійну основу з вбудованою ORM та системою міграцій. Django Ninja додає швидкий та типізований API з автоматичною документацією. PostgreSQL обрано як надійну реляційну СУБД з підтримкою UUID та JSON типів. Інтеграція з AI сервісами реалізована через офіційні SDK провайдерів."
+          conclusion="Технологічний стек Notes.FX Backend обрано з урахуванням сучасних практик розробки веб-додатків. Django забезпечує надійну основу з вбудованою ORM та системою міграцій. Django Ninja додає швидкий та типізований API з автоматичною документацією. PostgreSQL обрано як надійну реляцій��у СУБД з підтримкою UUID та JSON типів. Інтеграція з AI сервісами реалізована через офіційні SDK провайдерів."
         >
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="p-5 bg-[#141414] rounded-xl border border-[#27272a]">
