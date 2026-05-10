@@ -22,7 +22,7 @@ from apps.users.authentication import JWTAuth
 router = Router(tags=["Notes"], auth=JWTAuth())  # JWT авторизація для всіх
 
 MAX_UPLOAD_SIZE = 25 * 1024 * 1024  # 25 MB per file
-MAX_TAGS_PER_USER = 5
+MAX_TAGS_PER_NOTE = 5
 MAX_NOTE_REVISIONS_PER_NOTE = 30
 MAX_HISTORY_RESPONSE_ITEMS = 20
 logger = logging.getLogger(__name__)
@@ -639,9 +639,6 @@ def create_tag(request, data: TagCreateSchema):
     if Tag.objects.filter(user=request.auth, name=data.name).exists():
         return 400, {"detail": "Tag with this name already exists"}
 
-    if Tag.objects.filter(user=request.auth).count() >= MAX_TAGS_PER_USER:
-        return 400, {"detail": f"Maximum {MAX_TAGS_PER_USER} tags per user"}
-
     tag, created = Tag.objects.get_or_create(
         user=request.auth,
         name=data.name
@@ -770,6 +767,9 @@ def create_note(request, data: NoteCreateWithPasswordSchema):
     Створює нову нотатку
     """
     try:
+        if data.tag_ids and len(data.tag_ids) > MAX_TAGS_PER_NOTE:
+            return 400, {"detail": f"Maximum {MAX_TAGS_PER_NOTE} tags per note"}
+
         # Створення нотатки
         note = Note.objects.create(
             user=request.auth,
@@ -786,9 +786,6 @@ def create_note(request, data: NoteCreateWithPasswordSchema):
         note.save()
         
         # Додавання тегів (ManyToMany)
-        if data.tag_ids and len(data.tag_ids) > MAX_TAGS_PER_USER:
-            return 400, {"detail": f"Максимум {MAX_TAGS_PER_USER} тегів для нотатки"}
-
         if data.tag_ids:
             tags = Tag.objects.filter(id__in=data.tag_ids, user=request.auth)
             note.tags.set(tags)  # set() для ManyToMany
@@ -849,8 +846,8 @@ def update_note(request, note_id: str, data: NoteUpdateWithPasswordSchema):
         
         # Оновлення тегів
         if data.tag_ids is not None:
-            if len(data.tag_ids) > MAX_TAGS_PER_USER:
-                return 400, {"detail": f"Максимум {MAX_TAGS_PER_USER} тегів для нотатки"}
+            if len(data.tag_ids) > MAX_TAGS_PER_NOTE:
+                return 400, {"detail": f"Maximum {MAX_TAGS_PER_NOTE} tags per note"}
             tags = Tag.objects.filter(id__in=data.tag_ids, user=request.auth)
             note.tags.set(tags)
 
