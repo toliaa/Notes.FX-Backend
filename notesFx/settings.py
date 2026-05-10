@@ -126,11 +126,11 @@ def env_bool(name: str, default: bool) -> bool:
 
 
 def env_samesite(name: str, default: str | None) -> str | None:
+    """Parse SameSite attribute from env. Returns 'None', 'Lax', 'Strict', or None."""
     value = os.getenv(name, default)
     if value is None:
         return None
-    normalized = value.strip()
-    return None if normalized.lower() == 'none' else normalized
+    return value.strip()
 
 
 AUTH_COOKIE_SECURE = env_bool('AUTH_COOKIE_SECURE', not DEBUG)
