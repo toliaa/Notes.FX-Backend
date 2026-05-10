@@ -1,13 +1,17 @@
 from datetime import timedelta
 from typing import List, Optional
 
+from django.conf import settings
+from django.core.cache import cache
 from django.db.models import Count, Exists, OuterRef, Prefetch
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from ninja import Router
 
+from apps.notes.limits import get_note_count_limit_error
 from apps.notes.models import Note
 from apps.users.authentication import JWTAuth
+from notesFx.rate_limit import enforce_rate_limit, get_client_ip, stable_hash
 from .models import Comment, IdeaChain, Like
 from .schemas import (
     CommentCreateSchema,
@@ -133,22 +137,41 @@ def get_public_note(request, note_id: str, password: Optional[str] = None):
         # Allow shared link open without password; return masked content in that case.
         # Return 401 only when password was provided but incorrect.
         if password:
+            throttle_key = f"note-password:public:{note.id}:{get_client_ip(request)}"
+            throttle_error = enforce_rate_limit(
+                key=throttle_key,
+                limit=int(getattr(settings, "NOTE_PASSWORD_RATE_LIMIT", 5)),
+                window_seconds=int(getattr(settings, "NOTE_PASSWORD_RATE_WINDOW_SECONDS", 900)),
+            )
+            if throttle_error:
+                return 401, {"detail": throttle_error}
             if not note.check_password(password):
                 return 401, {"detail": "Incorrect password"}
+            cache.delete(throttle_key)
             reveal_content = True
 
     current_user = get_request_auth(request)
     return 200, note_to_public(note, current_user, reveal_content=reveal_content)
 
 
-@router.post("/notes/{note_id}/check-password", auth=None, response={200: NotePasswordResponse, 401: ErrorSchema, 404: ErrorSchema})
+@router.post("/notes/{note_id}/check-password", auth=None, response={200: NotePasswordResponse, 401: ErrorSchema, 404: ErrorSchema, 429: ErrorSchema})
 def check_public_note_password(request, note_id: str, data: NotePasswordCheckSchema):
     note = get_object_or_404(Note, id=note_id, is_public=True)
+    throttle_key = f"note-password:public:{note.id}:{get_client_ip(request)}"
 
     if not getattr(note, "is_password_protected", False):
         return 200, {"access_granted": True, "message": "Note is not password protected"}
 
+    throttle_error = enforce_rate_limit(
+        key=throttle_key,
+        limit=int(getattr(settings, "NOTE_PASSWORD_RATE_LIMIT", 5)),
+        window_seconds=int(getattr(settings, "NOTE_PASSWORD_RATE_WINDOW_SECONDS", 900)),
+    )
+    if throttle_error:
+        return 429, {"detail": throttle_error}
+
     if note.check_password(data.password):
+        cache.delete(throttle_key)
         return 200, {"access_granted": True, "message": "Password is correct"}
 
     return 401, {"detail": "Incorrect password"}
@@ -172,9 +195,22 @@ def get_comments(request, note_id: str):
     ]
 
 
-@router.post("/notes/{note_id}/comments", response={201: CommentSchema, 400: ErrorSchema})
+@router.post("/notes/{note_id}/comments", response={201: CommentSchema, 400: ErrorSchema, 429: ErrorSchema})
 def create_comment(request, note_id: str, data: CommentCreateSchema):
     note = get_object_or_404(Note, id=note_id, is_public=True)
+
+    comment_rate_error = enforce_rate_limit(
+        key=f"comment:create:user:{request.auth.id}",
+        limit=int(getattr(settings, "COMMENT_CREATE_RATE_LIMIT", 10)),
+        window_seconds=int(getattr(settings, "COMMENT_CREATE_RATE_WINDOW_SECONDS", 600)),
+    )
+    if comment_rate_error:
+        return 429, {"detail": comment_rate_error}
+
+    duplicate_key = "comment:duplicate:" + stable_hash(request.auth.id, note.id, data.content, data.parent_id)
+    if not cache.add(duplicate_key, True, timeout=120):
+        return 429, {"detail": "Duplicate comment detected. Please wait before sending the same comment again."}
+
     comment = Comment.objects.create(
         note=note,
         user=request.auth,
@@ -227,11 +263,32 @@ def _copy_note_from_community(request, note_id: str, password: Optional[str] = N
     original_note = get_object_or_404(Note, id=note_id, is_public=True)
 
     if getattr(original_note, "is_password_protected", False):
+        throttle_key = f"note-password:copy:{original_note.id}:{request.auth.id}"
+        throttle_error = enforce_rate_limit(
+            key=throttle_key,
+            limit=int(getattr(settings, "NOTE_PASSWORD_RATE_LIMIT", 5)),
+            window_seconds=int(getattr(settings, "NOTE_PASSWORD_RATE_WINDOW_SECONDS", 900)),
+        )
+        if throttle_error:
+            return 429, {"detail": throttle_error}
         if not password or not original_note.check_password(password):
             return 401, {"detail": "Incorrect password or password is missing"}
+        cache.delete(throttle_key)
 
     if original_note.user == request.auth:
         return 400, {"detail": "You cannot copy your own note"}
+
+    note_count_limit_error = get_note_count_limit_error(request.auth)
+    if note_count_limit_error:
+        return 400, {"detail": note_count_limit_error}
+
+    note_rate_error = enforce_rate_limit(
+        key=f"note:create:user:{request.auth.id}",
+        limit=int(getattr(settings, "NOTE_CREATE_RATE_LIMIT", 5)),
+        window_seconds=int(getattr(settings, "NOTE_CREATE_RATE_WINDOW_SECONDS", 3600)),
+    )
+    if note_rate_error:
+        return 429, {"detail": note_rate_error}
 
     new_note = Note.objects.create(
         user=request.auth,
@@ -247,12 +304,12 @@ def _copy_note_from_community(request, note_id: str, password: Optional[str] = N
     return 201, {"message": "Note copied successfully", "note_id": new_note.id}
 
 
-@router.post("/notes/{note_id}/inspire", response={201: dict, 400: ErrorSchema, 401: ErrorSchema, 404: ErrorSchema})
+@router.post("/notes/{note_id}/inspire", response={201: dict, 400: ErrorSchema, 401: ErrorSchema, 404: ErrorSchema, 429: ErrorSchema})
 def inspire_from_note(request, note_id: str, password: Optional[str] = None):
     return _copy_note_from_community(request, note_id, password)
 
 
-@router.post("/notes/{note_id}/copy", response={201: dict, 400: ErrorSchema, 401: ErrorSchema, 404: ErrorSchema})
+@router.post("/notes/{note_id}/copy", response={201: dict, 400: ErrorSchema, 401: ErrorSchema, 404: ErrorSchema, 429: ErrorSchema})
 def copy_note_from_community(request, note_id: str, password: Optional[str] = None):
     return _copy_note_from_community(request, note_id, password)
 

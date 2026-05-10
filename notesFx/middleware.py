@@ -1,9 +1,56 @@
 import time
+import secrets
 from typing import Optional
 
+from django.conf import settings
 from django.core.cache import cache
 from django.http import JsonResponse
 from django.utils.deprecation import MiddlewareMixin
+
+
+ACCESS_COOKIE_NAME = "notesfx_access"
+REFRESH_COOKIE_NAME = "notesfx_refresh"
+CSRF_COOKIE_NAME = "notesfx_csrf"
+
+
+class CookieCSRFMiddleware(MiddlewareMixin):
+    """Double-submit CSRF protection for cookie-authenticated API requests."""
+
+    unsafe_methods = {"POST", "PUT", "PATCH", "DELETE"}
+    exempt_paths = {
+        "/api/auth/login",
+        "/api/auth/register",
+        "/api/auth/register/request-otp",
+        "/api/auth/refresh",
+    }
+
+    def _allowed_origins(self) -> set[str]:
+        return set(getattr(settings, "CORS_ALLOWED_ORIGINS", [])) | set(
+            getattr(settings, "CSRF_TRUSTED_ORIGINS", [])
+        )
+
+    def process_request(self, request):
+        path = request.path.rstrip("/") or "/"
+        if not path.startswith("/api/") or request.method not in self.unsafe_methods:
+            return None
+
+        if path in self.exempt_paths:
+            return None
+
+        has_auth_cookie = ACCESS_COOKIE_NAME in request.COOKIES or REFRESH_COOKIE_NAME in request.COOKIES
+        if not has_auth_cookie:
+            return None
+
+        origin = request.META.get("HTTP_ORIGIN")
+        if origin and origin not in self._allowed_origins():
+            return JsonResponse({"detail": "Invalid request origin."}, status=403)
+
+        cookie_token = request.COOKIES.get(CSRF_COOKIE_NAME)
+        header_token = request.META.get("HTTP_X_CSRFTOKEN") or request.META.get("HTTP_X_CSRF_TOKEN")
+        if not cookie_token or not header_token or not secrets.compare_digest(cookie_token, header_token):
+            return JsonResponse({"detail": "CSRF verification failed."}, status=403)
+
+        return None
 
 
 class RateLimitMiddleware(MiddlewareMixin):

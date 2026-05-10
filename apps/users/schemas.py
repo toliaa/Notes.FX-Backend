@@ -28,8 +28,6 @@ class UserSchema(Schema):
     is_verified: bool
 
 class TokenSchema(Schema):
-    access: str
-    refresh: str
     user: UserSchema
 
 class ErrorSchema(Schema):

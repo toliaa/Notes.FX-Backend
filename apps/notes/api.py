@@ -14,6 +14,8 @@ from django.core.mail import send_mail
 from django.core.cache import cache
 from django.utils import timezone
 from django.conf import settings
+from notesFx.rate_limit import enforce_rate_limit, stable_hash
+from .limits import get_note_count_limit_error
 from .models import Note, Category, Tag, NoteRevision, MoodEntry, Reminder, ReminderNotification
 from .schemas import *
 from apps.users.authentication import JWTAuth
@@ -751,7 +753,7 @@ def get_note(request, note_id: str):
     
     return note
 
-@router.post("/notes", response={201: NoteSchema, 400: ErrorSchema})
+@router.post("/notes", response={201: NoteSchema, 400: ErrorSchema, 429: ErrorSchema})
 def create_note(request, data: NoteCreateWithPasswordSchema):
     """
     POST /api/notes/notes
@@ -767,6 +769,32 @@ def create_note(request, data: NoteCreateWithPasswordSchema):
     Створює нову нотатку
     """
     try:
+        note_count_limit_error = get_note_count_limit_error(request.auth)
+        if note_count_limit_error:
+            return 400, {"detail": note_count_limit_error}
+
+        note_rate_error = enforce_rate_limit(
+            key=f"note:create:user:{request.auth.id}",
+            limit=int(getattr(settings, "NOTE_CREATE_RATE_LIMIT", 5)),
+            window_seconds=int(getattr(settings, "NOTE_CREATE_RATE_WINDOW_SECONDS", 3600)),
+        )
+        if note_rate_error:
+            return 429, {"detail": note_rate_error}
+
+        duplicate_key = "note:duplicate:" + stable_hash(
+            request.auth.id,
+            data.title,
+            data.content,
+            data.category_id,
+            ",".join(sorted(data.tag_ids or [])),
+        )
+        if not cache.add(
+            duplicate_key,
+            True,
+            timeout=int(getattr(settings, "NOTE_DUPLICATE_WINDOW_SECONDS", 120)),
+        ):
+            return 429, {"detail": "Duplicate note detected. Please wait before sending the same note again."}
+
         if data.tag_ids and len(data.tag_ids) > MAX_TAGS_PER_NOTE:
             return 400, {"detail": f"Maximum {MAX_TAGS_PER_NOTE} tags per note"}
 
@@ -1103,7 +1131,7 @@ def mark_notification_read(request, notification_id: str):
     }
 
 
-@router.post("/notes/{note_id}/check-password", response={200: NotePasswordResponse, 404: ErrorSchema, 401: ErrorSchema})
+@router.post("/notes/{note_id}/check-password", response={200: NotePasswordResponse, 404: ErrorSchema, 401: ErrorSchema, 429: ErrorSchema})
 def check_note_password(request, note_id: str, data: NotePasswordCheckSchema):
     """
     POST /api/notes/notes/{id}/check-password
@@ -1123,9 +1151,19 @@ def check_note_password(request, note_id: str, data: NotePasswordCheckSchema):
             "access_granted": True,
             "message": "Нотатка не захищена паролем"
         }
+
+    throttle_key = f"note-password:private:{request.auth.id}:{note.id}"
+    throttle_error = enforce_rate_limit(
+        key=throttle_key,
+        limit=int(getattr(settings, "NOTE_PASSWORD_RATE_LIMIT", 5)),
+        window_seconds=int(getattr(settings, "NOTE_PASSWORD_RATE_WINDOW_SECONDS", 900)),
+    )
+    if throttle_error:
+        return 429, {"detail": throttle_error}
     
     # Перевірка паролю
     if note.check_password(data.password):
+        cache.delete(throttle_key)
         return 200, {
             "access_granted": True,
             "message": "Пароль правильний"

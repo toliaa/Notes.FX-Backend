@@ -49,6 +49,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',  # CORS - має бути на початку!
+    'notesFx.middleware.CookieCSRFMiddleware',
     'notesFx.middleware.RateLimitMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -185,6 +186,16 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Basic rate limiting (override via env vars in production).
 RATE_LIMIT_REQUESTS = int(os.getenv('RATE_LIMIT_REQUESTS', '200'))
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv('RATE_LIMIT_WINDOW_SECONDS', '60'))
+MAX_NOTES_PER_USER = int(os.getenv('MAX_NOTES_PER_USER', '5'))
+NOTE_CREATE_RATE_LIMIT = int(os.getenv('NOTE_CREATE_RATE_LIMIT', '5'))
+NOTE_CREATE_RATE_WINDOW_SECONDS = int(os.getenv('NOTE_CREATE_RATE_WINDOW_SECONDS', '3600'))
+NOTE_DUPLICATE_WINDOW_SECONDS = int(os.getenv('NOTE_DUPLICATE_WINDOW_SECONDS', '120'))
+COMMENT_CREATE_RATE_LIMIT = int(os.getenv('COMMENT_CREATE_RATE_LIMIT', '10'))
+COMMENT_CREATE_RATE_WINDOW_SECONDS = int(os.getenv('COMMENT_CREATE_RATE_WINDOW_SECONDS', '600'))
+AUTH_RATE_LIMIT = int(os.getenv('AUTH_RATE_LIMIT', '5'))
+AUTH_RATE_WINDOW_SECONDS = int(os.getenv('AUTH_RATE_WINDOW_SECONDS', '900'))
+NOTE_PASSWORD_RATE_LIMIT = int(os.getenv('NOTE_PASSWORD_RATE_LIMIT', '5'))
+NOTE_PASSWORD_RATE_WINDOW_SECONDS = int(os.getenv('NOTE_PASSWORD_RATE_WINDOW_SECONDS', '900'))
 
 # REST Framework settings
 REST_FRAMEWORK = {
