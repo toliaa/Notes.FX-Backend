@@ -139,7 +139,7 @@ CSRF_COOKIE_SECURE = env_bool('CSRF_COOKIE_SECURE', AUTH_COOKIE_SECURE)
 CSRF_COOKIE_SAMESITE = env_samesite('CSRF_COOKIE_SAMESITE', 'Lax')
 
 # CORS Settings - підключення до Next.js frontend
-default_cors = "http://localhost:3000,http://127.0.0.1:3000"
+default_cors = "http://localhost:3000,http://127.0.0.1:3000,https://notes-fx-frontend.vercel.app"
 CORS_ALLOWED_ORIGINS = [
     origin for origin in os.getenv('CORS_ALLOWED_ORIGINS', default_cors).split(',') if origin
 ]
