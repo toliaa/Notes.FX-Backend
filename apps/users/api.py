@@ -52,6 +52,18 @@ def user_to_dict(user):
     }
 
 
+def set_csrf_cookie(response, csrf_token: str):
+    response.set_cookie(
+        CSRF_COOKIE_NAME,
+        csrf_token,
+        max_age=int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds()),
+        httponly=False,
+        secure=settings.CSRF_COOKIE_SECURE,
+        samesite=settings.CSRF_COOKIE_SAMESITE,
+        path="/",
+    )
+
+
 def set_auth_cookies(response, tokens):
     options = cookie_options()
     response.set_cookie(
@@ -66,15 +78,6 @@ def set_auth_cookies(response, tokens):
         max_age=int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds()),
         **options,
     )
-    response.set_cookie(
-        CSRF_COOKIE_NAME,
-        secrets.token_urlsafe(32),
-        max_age=int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds()),
-        httponly=False,
-        secure=settings.CSRF_COOKIE_SECURE,
-        samesite=settings.CSRF_COOKIE_SAMESITE,
-        path="/",
-    )
 
 
 def clear_auth_cookies(response):
@@ -84,8 +87,10 @@ def clear_auth_cookies(response):
 
 
 def auth_response(data, tokens, status=200):
-    response = Response(data, status=status)
+    csrf_token = secrets.token_urlsafe(32)
+    response = Response({**data, "csrf_token": csrf_token}, status=status)
     set_auth_cookies(response, tokens)
+    set_csrf_cookie(response, csrf_token)
     return response
 
 @router.post("/register", response={201: TokenSchema, 400: ErrorSchema, 429: ErrorSchema})
@@ -166,22 +171,15 @@ def refresh_token(request):
             return 401, {"detail": "Refresh token is missing"}
 
         refresh = RefreshToken(refresh_value)
-        response = Response({"detail": "Token refreshed"})
+        csrf_token = secrets.token_urlsafe(32)
+        response = Response({"detail": "Token refreshed", "csrf_token": csrf_token})
         response.set_cookie(
             ACCESS_COOKIE_NAME,
             str(refresh.access_token),
             max_age=int(settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds()),
             **cookie_options(),
         )
-        response.set_cookie(
-            CSRF_COOKIE_NAME,
-            secrets.token_urlsafe(32),
-            max_age=int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds()),
-            httponly=False,
-            secure=settings.CSRF_COOKIE_SECURE,
-            samesite=settings.CSRF_COOKIE_SAMESITE,
-            path="/",
-        )
+        set_csrf_cookie(response, csrf_token)
         return response
     except Exception:
         return 401, {"detail": "Невірний refresh token"}
@@ -199,4 +197,8 @@ def get_current_user(request):
     Отримання поточного користувача
     Вимагає JWT токен
     """
-    return 200, user_to_dict(request.auth)
+    user_data = user_to_dict(request.auth)
+    csrf_token = request.COOKIES.get(CSRF_COOKIE_NAME)
+    if csrf_token:
+        user_data["csrf_token"] = csrf_token
+    return 200, user_data
