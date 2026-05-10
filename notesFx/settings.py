@@ -117,6 +117,27 @@ SIMPLE_JWT = {
     'USER_ID_CLAIM': 'user_id',
 }
 
+
+def env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def env_samesite(name: str, default: str | None) -> str | None:
+    value = os.getenv(name, default)
+    if value is None:
+        return None
+    normalized = value.strip()
+    return None if normalized.lower() == 'none' else normalized
+
+
+AUTH_COOKIE_SECURE = env_bool('AUTH_COOKIE_SECURE', not DEBUG)
+AUTH_COOKIE_SAMESITE = env_samesite('AUTH_COOKIE_SAMESITE', 'Lax')
+CSRF_COOKIE_SECURE = env_bool('CSRF_COOKIE_SECURE', AUTH_COOKIE_SECURE)
+CSRF_COOKIE_SAMESITE = env_samesite('CSRF_COOKIE_SAMESITE', 'Lax')
+
 # CORS Settings - підключення до Next.js frontend
 default_cors = "http://localhost:3000,http://127.0.0.1:3000"
 CORS_ALLOWED_ORIGINS = [

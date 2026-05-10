@@ -28,8 +28,8 @@ CSRF_COOKIE_NAME = "notesfx_csrf"
 def cookie_options():
     return {
         "httponly": True,
-        "secure": not settings.DEBUG,
-        "samesite": "Lax",
+        "secure": settings.AUTH_COOKIE_SECURE,
+        "samesite": settings.AUTH_COOKIE_SAMESITE,
         "path": "/",
     }
 
@@ -71,16 +71,16 @@ def set_auth_cookies(response, tokens):
         secrets.token_urlsafe(32),
         max_age=int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds()),
         httponly=False,
-        secure=not settings.DEBUG,
-        samesite="Lax",
+        secure=settings.CSRF_COOKIE_SECURE,
+        samesite=settings.CSRF_COOKIE_SAMESITE,
         path="/",
     )
 
 
 def clear_auth_cookies(response):
-    response.delete_cookie(ACCESS_COOKIE_NAME, path="/", samesite="Lax")
-    response.delete_cookie(REFRESH_COOKIE_NAME, path="/", samesite="Lax")
-    response.delete_cookie(CSRF_COOKIE_NAME, path="/", samesite="Lax")
+    response.delete_cookie(ACCESS_COOKIE_NAME, path="/", samesite=settings.AUTH_COOKIE_SAMESITE)
+    response.delete_cookie(REFRESH_COOKIE_NAME, path="/", samesite=settings.AUTH_COOKIE_SAMESITE)
+    response.delete_cookie(CSRF_COOKIE_NAME, path="/", samesite=settings.CSRF_COOKIE_SAMESITE)
 
 
 def auth_response(data, tokens, status=200):
@@ -178,8 +178,8 @@ def refresh_token(request):
             secrets.token_urlsafe(32),
             max_age=int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds()),
             httponly=False,
-            secure=not settings.DEBUG,
-            samesite="Lax",
+            secure=settings.CSRF_COOKIE_SECURE,
+            samesite=settings.CSRF_COOKIE_SAMESITE,
             path="/",
         )
         return response
